@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Automated Expenditure Labeling System</title>
+<style>
+  /* Utilitarian, report-style layout: one grey scale for everything, and only
+     two signal colors, reserved for lines that need action. */
+  :root {
+    --g0: #ffffff;  /* panels */
+    --g1: #f3f4f5;  /* page, table header */
+    --g2: #e4e6e8;  /* row rules, chips */
+    --g3: #c9cdd1;  /* borders */
+    --g5: #6b7177;  /* secondary text */
+    --g7: #3a3f44;  /* strong secondary */
+    --g9: #1b1e21;  /* text, header bar */
+    --attn: #b42318;  --attn-bg: #fbeae8;   /* needs a label */
+    --warn: #a15c07;  --warn-bg: #fdf1e0;   /* amount changed */
+    --mono: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+    --sans: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--g1); }
+  body { margin: 0; font: 14px/1.45 var(--sans); color: var(--g9); }
+  header { background: var(--g9); color: var(--g0); padding: 14px 28px;
+           display: flex; align-items: center; justify-content: space-between; gap: 16px;
+           border-bottom: 3px solid var(--g7); }
+  header h1 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+  header p { margin: 3px 0 0; color: var(--g3); font-size: 12.5px; }
+  main { max-width: 1180px; margin: 0 auto; padding: 22px 20px 60px; }
+  .hidden { display: none !important; }
+  button { font: inherit; cursor: pointer; border-radius: 2px; border: 1px solid var(--g3);
+           background: var(--g0); padding: 7px 13px; color: var(--g9); }
+  button:hover { border-color: var(--g5); }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--g9); outline-offset: 1px; }
+  button.primary { background: var(--g9); border-color: var(--g9); color: var(--g0); font-weight: 600;
+                   text-transform: uppercase; letter-spacing: .08em; font-size: 12.5px; }
+  button.primary:hover { background: var(--g7); }
+  button.ghost { background: transparent; color: var(--g0); border-color: var(--g5); }
+  button:disabled { opacity: .5; cursor: default; }
+
+  .drop { border: 1px dashed var(--g5); border-radius: 2px; background: var(--g0);
+          padding: 56px 20px; text-align: center; cursor: pointer; }
+  .drop:hover, .drop.over { border-color: var(--g9); background: var(--g1); }
+  .drop h2 { margin: 0 0 6px; font-size: 16px; font-weight: 650; }
+  .drop p { margin: 0; color: var(--g5); }
+
+  .label { font-size: 11.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--g5); }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+  .stat { background: var(--g0); border: 1px solid var(--g3); border-top: 3px solid var(--g3);
+          border-radius: 2px; padding: 12px 16px; }
+  .stat .n { font-size: 26px; font-weight: 700; font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--g7); }
+  .stat .l { margin-top: 2px; }
+  .stat.attn { border-top-color: var(--attn); background: var(--attn-bg); }
+  .stat.attn .n { color: var(--attn); }
+  .stat.warn { border-top-color: var(--warn); background: var(--warn-bg); }
+  .stat.warn .n { color: var(--warn); }
+
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 16px; align-items: start; }
+  .panel { min-width: 0; background: var(--g0); border: 1px solid var(--g3); border-radius: 2px; }
+  .tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--g3); background: var(--g1); }
+  .tab { border: 0; border-right: 1px solid var(--g3); border-radius: 0; background: none;
+         padding: 11px 16px; color: var(--g5); font-weight: 600; font-size: 13px; }
+  .tab.active { background: var(--g0); color: var(--g9); box-shadow: inset 0 3px 0 var(--g9); margin-bottom: -1px; }
+  .tab-attn { color: var(--g9); font-weight: 700; }
+  .tab-attn.active { box-shadow: inset 0 3px 0 var(--attn); }
+  .badge { display: inline-block; min-width: 22px; padding: 1px 6px; margin-left: 6px; border-radius: 2px;
+           background: var(--g2); color: var(--g7); font-size: 12px; font-family: var(--mono); text-align: center; }
+  .badge.attn { background: var(--attn); color: var(--g0); font-weight: 700; }
+  .badge.attn:empty, .badge.attn.zero { background: var(--g2); color: var(--g7); }
+  .table-wrap { max-height: 560px; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 8px 12px; border-bottom: 1px solid var(--g2); text-align: left; vertical-align: middle; }
+  th { position: sticky; top: 0; background: var(--g1); border-bottom-color: var(--g3); font-size: 11.5px; color: var(--g5);
+       text-transform: uppercase; letter-spacing: .08em; font-weight: 600; z-index: 1; }
+  tbody tr:hover td { background: var(--g1); }
+  td.num, th.num { text-align: right; font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  th.num { font-family: var(--sans); font-size: 11.5px; }
+  td.date { white-space: nowrap; font-family: var(--mono); font-size: 13px; color: var(--g7); }
+  td.code { font-family: var(--mono); font-size: 12.5px; color: var(--g5); white-space: nowrap; }
+  tr.done td { opacity: .45; }
+  select { font: inherit; padding: 5px 6px; border: 1px solid var(--g3); border-radius: 2px; min-width: 130px; background: var(--g0); color: var(--g9); }
+  .pill { display: inline-block; padding: 1px 7px; border-radius: 2px; font-size: 12px; font-weight: 600; }
+  .pill.auto { background: var(--g2); color: var(--g7); }
+  .pill.manual { background: var(--g0); color: var(--g9); border: 1px solid var(--g7); }
+  .pill.none { background: var(--attn-bg); color: var(--attn); }
+  .pill.new { background: var(--g0); color: var(--g5); border: 1px solid var(--g3); margin-left: 6px;
+              text-transform: uppercase; letter-spacing: .06em; font-size: 10.5px; }
+  .chg { color: var(--warn); font-weight: 600; }
+  .empty { padding: 40px; text-align: center; color: var(--g5); }
+
+  aside .panel { padding: 16px; }
+  aside h3 { margin: 0 0 8px; }
+  .totals div { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px solid var(--g2);
+                font-variant-numeric: tabular-nums; }
+  .totals div span:last-child { font-family: var(--mono); font-size: 13px; }
+  .totals div.grand { font-weight: 700; border-top: 2px solid var(--g9); border-bottom: 0; padding-top: 8px; margin-top: 2px; }
+  .totals div.excluded { color: var(--g5); border-top: 1px dashed var(--g3); border-bottom: 0; margin-top: 8px; padding-top: 8px; }
+  .totals small { color: var(--g5); }
+  .add { display: flex; gap: 6px; margin-top: 14px; }
+  .add input { flex: 1; min-width: 0; font: inherit; padding: 6px 8px; border: 1px solid var(--g3); border-radius: 2px; }
+  .export { width: 100%; margin-top: 14px; padding: 10px; }
+  .note { color: var(--g5); font-size: 12px; margin-top: 8px; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--g9);
+           color: var(--g0); padding: 10px 16px; border-radius: 2px; font-size: 13px; max-width: calc(100% - 32px); }
+  .toast.error { background: var(--attn); }
+  @media (max-width: 860px) { .layout { grid-template-columns: minmax(0, 1fr); } main { padding-inline: 16px; } header { padding-inline: 16px; } .stats { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Automated Expenditure Labeling System</h1>
+    <p id="subtitle">Upload a Status of Funds report. Lines you've labeled before are filled in automatically.</p>
+  </div>
+  <button class="ghost hidden" id="new-file">Upload another file</button>
+</header>
+
+<main>
+  <label class="drop" id="drop">
+    <input type="file" id="file" accept=".xlsx" hidden>
+    <h2>Drop a SOF report (.xlsx) here</h2>
+    <p>or click to choose a file</p>
+  </label>
+
+  <div id="workspace" class="hidden">
+    <div class="stats">
+      <div class="stat"><div class="n" id="s-auto">0</div><div class="l label">Auto-labeled from memory</div></div>
+      <div class="stat attn"><div class="n" id="s-needs">0</div><div class="l label">Need a label</div></div>
+      <div class="stat warn"><div class="n" id="s-changed">0</div><div class="l label">Amount changed since last report</div></div>
+      <div class="stat"><div class="n" id="s-total">0</div><div class="l label" id="s-total-l">Lines after netting offsets</div></div>
+    </div>
+
+    <div class="layout">
+      <section class="panel">
+        <nav class="tabs">
+          <button class="tab tab-attn active" data-tab="needs">Need labels <span class="badge attn" id="b-needs">0</span></button>
+          <button class="tab" data-tab="changed">Changed amounts <span class="badge" id="b-changed">0</span></button>
+          <button class="tab" data-tab="all">All lines <span class="badge" id="b-all">0</span></button>
+        </nav>
+        <div class="table-wrap"><table>
+          <thead id="thead"></thead>
+          <tbody id="tbody"></tbody>
+        </table></div>
+        <div class="empty hidden" id="empty"></div>
+      </section>
+
+      <aside>
+        <div class="panel">
+          <h3 class="label">Totals by section</h3>
+          <div class="totals" id="totals"></div>
+          <button class="primary export" id="export">Export labeled Excel</button>
+          <div class="note">The Excel file marks each section as from memory, labeled now, or unlabeled, and each line as New or Changed.</div>
+          <div class="add">
+            <input id="new-section" placeholder="New section name">
+            <button id="add-section">Add</button>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</main>
+
+<script>
+const state = { sessionId: null, items: [], sections: [], tab: "needs", filename: "" };
+const $ = (id) => document.getElementById(id);
+const money = (n) => (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function toast(msg, isError = false) {
+  const t = document.createElement("div");
+  t.className = "toast" + (isError ? " error" : "");
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+async function api(path, body) {
+  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Request failed");
+  return data;
+}
+
+// ---------- upload ----------
+const drop = $("drop");
+$("file").addEventListener("change", (e) => e.target.files[0] && upload(e.target.files[0]));
+["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", (e) => e.dataTransfer.files[0] && upload(e.dataTransfer.files[0]));
+$("new-file").addEventListener("click", () => {
+  $("workspace").classList.add("hidden"); drop.classList.remove("hidden"); $("new-file").classList.add("hidden");
+  $("file").value = "";
+});
+
+async function upload(file) {
+  document.querySelectorAll(".toast").forEach((t) => t.remove());
+  drop.querySelector("h2").textContent = "Processing " + file.name + "…";
+  const form = new FormData();
+  form.append("file", file);
+  try {
+    const res = await fetch("/api/upload", { method: "POST", body: form });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    Object.assign(state, { sessionId: data.session_id, items: data.items, sections: data.sections, filename: data.filename });
+    const notes = [data.filename, data.stats.offsets_removed.toLocaleString() + " offsetting or $0 lines netted out"];
+    if (data.stats.imported_labels) notes.push(data.stats.imported_labels.toLocaleString() + " labels imported from the file's Section column");
+    $("subtitle").textContent = notes.join(" · ");
+    $("s-changed").textContent = data.stats.changed;
+    $("s-total").textContent = data.stats.total.toLocaleString();
+    drop.classList.add("hidden"); $("workspace").classList.remove("hidden"); $("new-file").classList.remove("hidden");
+    state.tab = data.stats.needs_label ? "needs" : "all";
+    render(data.summary);
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    drop.querySelector("h2").textContent = "Drop a SOF report (.xlsx) here";
+  }
+}
+
+// ---------- rendering ----------
+document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => { state.tab = t.dataset.tab; render(); }));
+
+function sectionSelect(item) {
+  const opts = state.sections.map((s) => `<option ${s === item.section ? "selected" : ""}>${esc(s)}</option>`).join("");
+  return `<select data-id="${item.id}"><option value="">Choose…</option>${opts}</select>`;
+}
+
+function labelPill(item) {
+  if (!item.section) return `<span class="pill none">unlabeled</span>`;
+  return `<span class="pill ${item.label_source}">${esc(item.section)}</span>`;
+}
+
+function render(summary) {
+  const needs = state.items.filter((i) => !i.section || i._justLabeled);
+  const changed = state.items.filter((i) => i.changed);
+  $("s-auto").textContent = state.items.filter((i) => i.label_source === "auto").length.toLocaleString();
+  $("s-needs").textContent = state.items.filter((i) => !i.section).length;
+  const needCount = state.items.filter((i) => !i.section).length;
+  $("b-needs").textContent = needCount;
+  $("b-needs").classList.toggle("zero", needCount === 0);
+  $("b-changed").textContent = changed.length;
+  $("b-all").textContent = state.items.length;
+  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === state.tab));
+
+  let head, rows;
+  if (state.tab === "needs") {
+    head = ["Commitment", "Description", "Mission", "Posted", "Amount", "Section"];
+    rows = needs.map((i) => `<tr class="${i.section ? "done" : ""}">
+      <td class="code">${esc(i.commitment_item)}</td><td>${esc(i.description)}</td><td>${esc(i.mission)}</td>
+      <td class="date">${esc(i.posting_date)}</td><td class="num">${money(i.amount)}</td><td>${sectionSelect(i)}</td></tr>`);
+  } else if (state.tab === "changed") {
+    head = ["Commitment", "Description", "Obligation doc", "Previous", "Now", "Change", "Section"];
+    rows = changed.map((i) => {
+      const d = i.amount - i.previous_amount;
+      return `<tr><td class="code">${esc(i.commitment_item)}</td><td>${esc(i.description)}</td><td class="code">${esc(i.obligation_doc)}</td>
+        <td class="num">${money(i.previous_amount)}</td><td class="num">${money(i.amount)}</td>
+        <td class="num chg">${d > 0 ? "+" : ""}${money(d)}</td><td>${labelPill(i)}</td></tr>`;
+    });
+  } else {
+    head = ["Commitment", "Description", "Obligation doc", "Amount", "Section", "Change section"];
+    rows = state.items.map((i) => `<tr><td class="code">${esc(i.commitment_item)}</td><td>${esc(i.description)}${i.is_new ? '<span class="pill new">new</span>' : ""}</td>
+      <td class="code">${esc(i.obligation_doc)}</td><td class="num">${money(i.amount)}</td><td>${labelPill(i)}</td><td>${sectionSelect(i)}</td></tr>`);
+  }
+  $("thead").innerHTML = "<tr>" + head.map((h) => `<th class="${["Amount", "Previous", "Now", "Change"].includes(h) ? "num" : ""}">${h}</th>`).join("") + "</tr>";
+  $("tbody").innerHTML = rows.join("");
+  const emptyMsg = { needs: "Everything is labeled.", changed: "No amounts changed since the last report.", all: "No lines." }[state.tab];
+  $("empty").textContent = emptyMsg;
+  $("empty").classList.toggle("hidden", rows.length > 0);
+  if (summary) renderTotals(summary.totals);
+}
+
+function renderTotals(t) {
+  $("totals").innerHTML = Object.entries(t.sections).map(([k, v]) => `<div><span>${esc(k)}</span><span>${money(v)}</span></div>`).join("")
+    + `<div class="grand"><span>Unit total</span><span>${money(t.unit_total)}</span></div>`
+    + (t.not_our_unit ? `<div class="excluded"><span>Not our unit<br><small>charged in error, excluded</small></span><span>${money(t.not_our_unit)}</span></div>` : "");
+}
+
+// ---------- labeling ----------
+$("tbody").addEventListener("change", async (e) => {
+  if (e.target.tagName !== "SELECT" || !e.target.value) return;
+  const item = state.items.find((i) => i.id === Number(e.target.dataset.id));
+  const section = e.target.value;
+  try {
+    const data = await api("/api/label", { session_id: state.sessionId, commitment_item: item.commitment_item, description: item.description, section });
+    state.items.forEach((i) => {
+      if (i.commitment_item === item.commitment_item && i.description === item.description) {
+        i.section = section; i.label_source = "manual"; i._justLabeled = true;
+      }
+    });
+    render(data.summary);
+    if (data.updated > 1) toast(`Labeled ${data.updated} matching lines as ${section}`);
+  } catch (err) { toast(err.message, true); }
+});
+
+$("add-section").addEventListener("click", async () => {
+  const name = $("new-section").value.trim();
+  if (!name) return;
+  try {
+    const data = await api("/api/sections", { name });
+    state.sections = data.sections; $("new-section").value = ""; render(); toast(`Added section "${name}"`);
+  } catch (err) { toast(err.message, true); }
+});
+
+$("export").addEventListener("click", async () => {
+  const res = await fetch("/api/export", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: state.sessionId }) });
+  if (!res.ok) { toast((await res.json()).error, true); return; }
+  const blob = await res.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = state.filename.replace(/\.xlsx$/i, "") + "_LABELED.xlsx";
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+</script>
+</body>
+</html>
