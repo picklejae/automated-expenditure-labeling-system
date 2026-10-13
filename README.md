@@ -113,7 +113,7 @@ click Export     ──────────▶  POST /api/export ───�
 ### Installation
 
 ```bash
-git clone https://github.com/<picklejae>/automated-expenditure-labeling-system.git
+git clone https://github.com/picklejae/automated-expenditure-labeling-system.git
 cd automated-expenditure-labeling-system
 
 python -m venv .venv
