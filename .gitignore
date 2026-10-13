@@ -1,0 +1,26 @@
+# Local data: never commit real reports or the label database
+data/
+uploads/
+outputs/
+*.db
+*.sqlite
+*.sqlite3
+
+# Only the fake sample reports may be committed
+*.xlsx
+!sample_data/SOF_period1.xlsx
+!sample_data/SOF_period2.xlsx
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
